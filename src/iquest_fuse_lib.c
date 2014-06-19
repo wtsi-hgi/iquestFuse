@@ -2447,10 +2447,10 @@ void * malloc_and_zero_or_exit(int size) {
  * allocate memory and initialise iquest_fuse_query_cond_t 
  */
 int iquest_fuse_query_cond_create(iquest_fuse_query_cond_t **query_cond) {
-  *query_cond = malloc_and_zero_or_exit(sizeof(iquest_fuse_query_cond_t));
+  *query_cond = (iquest_fuse_query_cond_t*)(malloc_and_zero_or_exit(sizeof(iquest_fuse_query_cond_t)));
   bzero(*query_cond, sizeof(iquest_fuse_query_cond_t));
-  (*query_cond)->cond = malloc_and_zero_or_exit(sizeof(keyValPair_t));
-  (*query_cond)->where_cond = malloc_and_zero_or_exit(sizeof(inxValPair_t));
+  (*query_cond)->cond = (keyValPair_t*)(malloc_and_zero_or_exit(sizeof(keyValPair_t)));
+  (*query_cond)->where_cond = (inxValPair_t*)malloc_and_zero_or_exit(sizeof(inxValPair_t));
   return 0;
 }
 
@@ -2527,10 +2527,10 @@ int iquest_parse_fuse_path(iquest_fuse_t *iqf, char *path, char **rods_path, iqu
   }
   
   /* allocate memory for temporary buffers */
-  char *rods_path_tmp = malloc_and_zero_or_exit(path_len+1);
-  char *query_tmp = malloc_and_zero_or_exit(path_len+1);
-  char *query_part_attr_tmp = malloc_and_zero_or_exit(path_len+1); 
-  char *post_query_path_tmp = malloc_and_zero_or_exit(path_len+1);
+  char *rods_path_tmp = (char*)malloc_and_zero_or_exit(path_len+1);
+  char *query_tmp = (char*)malloc_and_zero_or_exit(path_len+1);
+  char *query_part_attr_tmp = (char*)malloc_and_zero_or_exit(path_len+1); 
+  char *post_query_path_tmp = (char*)malloc_and_zero_or_exit(path_len+1);
 
   /*
     if(path[0] == '/') {
