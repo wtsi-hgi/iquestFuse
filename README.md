@@ -18,6 +18,12 @@ iquest_fuse mountpoint ...
 fusermount -u mountpoint 
 ```
 
+To debug, you can mount with the iquestFuse client in the foreground using the `-d` option. 
+```
+iquest_fuse -d mountpoint ...
+```
+
+
 Prerequisites
 -------------
 iRODS - tested with 3.1
