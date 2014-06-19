@@ -117,7 +117,7 @@ typedef struct iquest_fuse {
   iquest_fuse_conf_t *conf;
   //iquest_fuse_irods_conn_t *irods_conn;
   iquest_fuse_irods_conn_t *irods_conn_head;
-  rodsEnv *rodsEnv;
+  rodsEnv *rods_env;
 } iquest_fuse_t;
 
 

@@ -55,8 +55,6 @@
 extern iFuseDesc_t IFuseDesc[];
 extern pathCacheQue_t NonExistPathArray[];
 extern pathCacheQue_t PathArray[];
-//TODO shove this in private data
-//extern rodsEnv IquestRodsEnv;
 
 typedef struct {
    int columnId;
@@ -111,12 +109,12 @@ void iquest_fuse_t_destroy(iquest_fuse_t *iqf) {
   if(iqf->conf != NULL) {
     iquest_fuse_conf_t_destroy(iqf->conf);
   }
-  if(iqf->rodsEnv != NULL) {
+  if(iqf->rods_env != NULL) {
     //TODO it seems like there should be an iRODS library function that does this? 
     rodsLog(LOG_DEBUG, "iquest_fuse_t_destroy: freeing memory for dynamically allocated portions of rodsEnv");
-    if(iqf->rodsEnv->rodsServerDn != NULL) {
-      rodsLog(LOG_DEBUG, "iquest_fuse_t_destroy: calling free(iqf->rodsEnv->rodsServerDn)");
-      free(iqf->rodsEnv->rodsServerDn);
+    if(iqf->rods_env->rodsServerDn != NULL) {
+      rodsLog(LOG_DEBUG, "iquest_fuse_t_destroy: calling free(iqf->rods_env->rodsServerDn)");
+      free(iqf->rods_env->rodsServerDn);
     }
   }
 }
@@ -692,9 +690,9 @@ int ifusePut (iquest_fuse_irods_conn_t *irods_conn, char *path, char *locCachePa
   dataObjInp.openFlags = O_RDWR;
   addKeyVal (&dataObjInp.condInput, FORCE_FLAG_KW, "");
   addKeyVal (&dataObjInp.condInput, DATA_TYPE_KW, "generic");
-  if (strlen (irods_conn->iqf->rodsEnv->rodsDefResource) > 0) {
+  if (strlen (irods_conn->iqf->rods_env->rodsDefResource) > 0) {
     addKeyVal (&dataObjInp.condInput, DEST_RESC_NAME_KW,
-	       irods_conn->iqf->rodsEnv->rodsDefResource);
+	       irods_conn->iqf->rods_env->rodsDefResource);
   }
   
   status = rcDataObjPut (conn, &dataObjInp, locCachePath);
@@ -1152,13 +1150,13 @@ unuseIFuseConn (iquest_fuse_irods_conn_t *irods_conn)
 
 /*
  * Attempts to connect the iRODS client connection in irods_conn
- * irods_conn->rodsEnv must already be specified before calling this. 
+ * irods_conn->rods_env must already be specified before calling this. 
  */
 int ifuseConnect (iquest_fuse_irods_conn_t *irods_conn) { 
     int status;
     rErrMsg_t errMsg;
     rodsEnv *myRodsEnv;
-    myRodsEnv = irods_conn->iqf->rodsEnv;
+    myRodsEnv = irods_conn->iqf->rods_env;
 
     irods_conn->conn = rcConnect (myRodsEnv->rodsHost, myRodsEnv->rodsPort,
       myRodsEnv->rodsUserName, myRodsEnv->rodsZone, NO_RECONN, &errMsg);
@@ -1695,9 +1693,9 @@ char *outIrodsPath)
         return -ENOTDIR;
     }
 
-    if (strlen (irods_conn->iqf->rodsEnv->rodsDefResource) > 0) {
+    if (strlen (irods_conn->iqf->rods_env->rodsDefResource) > 0) {
         addKeyVal (&dataObjInp.condInput, RESC_NAME_KW,
-          irods_conn->iqf->rodsEnv->rodsDefResource);
+          irods_conn->iqf->rods_env->rodsDefResource);
     }
 
     addKeyVal (&dataObjInp.condInput, DATA_TYPE_KW, "generic");
@@ -1889,7 +1887,7 @@ int iquest_parse_rods_path_str(iquest_fuse_t *iqf, char *in_path, char *out_path
 
   rodsLog(LOG_DEBUG, "iquest_parse_rods_path_str: calling parseRodsPath in_path=%s", in_path);
   strncpy(rodsPath.inPath, in_path, MAX_NAME_LEN);
-  status = parseRodsPath(&rodsPath, iqf->rodsEnv);
+  status = parseRodsPath(&rodsPath, iqf->rods_env);
   if (status < 0) {
     return status;
   }

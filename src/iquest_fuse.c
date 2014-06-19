@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
   iquest_fuse.conf = &iquest_fuse_conf;
 
   static rodsEnv myRodsEnv;
-  iquest_fuse.rodsEnv = &myRodsEnv;
+  iquest_fuse.rods_env = &myRodsEnv;
 
   iquest_fuse_t *iqf = &iquest_fuse;
   
@@ -275,7 +275,7 @@ int main(int argc, char **argv) {
   /*
    * get iRODS configuration from environment and conf file (~/.irods/.irodsEnv)
    */
-  status = getRodsEnv(iqf->rodsEnv);
+  status = getRodsEnv(iqf->rods_env);
   if( status < 0 ) {
     rodsLogError(LOG_ERROR, status, "main: getRodsEnv error. ");
     exit(1);
@@ -285,10 +285,10 @@ int main(int argc, char **argv) {
   /* 
    * override irodsLogLevel if debug_level is greater
    */
-  if(iqf->conf->debug_level > iqf->rodsEnv->rodsLogLevel) {
+  if(iqf->conf->debug_level > iqf->rods_env->rodsLogLevel) {
     fprintf(stderr, "overriding rodsLogLevel to debug_level=%d\n", iqf->conf->debug_level);
     rodsLogLevel(iqf->conf->debug_level);
-    iqf->rodsEnv->rodsLogLevel = iqf->conf->debug_level;
+    iqf->rods_env->rodsLogLevel = iqf->conf->debug_level;
   }
   
   initPathCache ();
