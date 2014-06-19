@@ -26,8 +26,6 @@
  *****************************************************************************/
 
 /*****************************************************************************
- * iquestFuseOperations.h
- * 
  * Declarations of FUSE filesystem operations for iquestFuse.
  *****************************************************************************/
 #ifndef IQUEST_FUSE_OPERATIONS_H
@@ -42,6 +40,7 @@ int iquest_fuse_getattr(const char *path, struct stat *stbuf);
 int iquest_fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);
 int iquest_fuse_open(const char *path, struct fuse_file_info *fi);
 int iquest_fuse_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
+int iquest_fuse_release(const char *path, struct fuse_file_info *fi);
 
 
 
@@ -64,7 +63,6 @@ int irodsOpen(const char *path, struct fuse_file_info *fi);
 int irodsRead(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
 int irodsWrite(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
 int irodsStatfs(const char *path, struct statvfs *stbuf);
-int irodsRelease(const char *path, struct fuse_file_info *fi);
 int irodsFsync (const char *path, int isdatasync, struct fuse_file_info *fi);
 int irodsOpendir (const char *, struct fuse_file_info *);
 int irodsReaddir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);

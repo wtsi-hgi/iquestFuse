@@ -20,31 +20,31 @@
  *****************************************************************************/
 
 /*****************************************************************************
- *** Portions of This file are substantially based on iFuseLib.c which is  ***
+ *** Portions of this file are substantially based on iFuseLib.c which is  ***
  *** Copyright (c), The Regents of the University of California            ***
  *** For more information please refer to files in the COPYRIGHT directory ***
  *****************************************************************************/
 
 /*****************************************************************************
- *** Portions of This file are substantially based on iFuseOper.c which is ***
+ *** Portions of this file are substantially based on iFuseOper.c which is ***
  *** Copyright (c), The Regents of the University of California            ***
  *** For more information please refer to files in the COPYRIGHT directory ***
  *****************************************************************************/
 
 /*****************************************************************************
- * iquestFuseHelper.c
- * 
- * Implementations of helper functions for iquestFuse.
+ * Implementations of library/helper functions for iquestFuse.
  *****************************************************************************/
+
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <time.h>
 #include <assert.h>
 
-#include "iquestFuse.h"
-#include "iquestFuseOperations.h"
-#include "iquestFuseHelper.h"
+#include "iquest_fuse.h"
+#include "iquest_fuse_operations.h"
+#include "iquest_fuse_lib.h"
 
 #include "miscUtil.h"
 
@@ -55,6 +55,13 @@ extern pathCacheQue_t PathArray[];
 //TODO shove this in private data
 //extern rodsEnv IquestRodsEnv;
 
+typedef struct {
+   int columnId;
+   char *columnName;
+} columnName_t;
+/* defined in rodsGenQueryNames.h */
+extern int NumOfColumnNames;
+extern columnName_t columnNames[];
 
 #include <pthread.h>
 static pthread_mutex_t DescLock;
@@ -117,13 +124,17 @@ void iquest_fuse_conf_t_destroy(iquest_fuse_conf_t *conf) {
     rodsLog(LOG_DEBUG, "iquest_fuse_conf_t_destroy: calling free(conf->base_query)");
     free(conf->base_query);
   }
-  if(conf->irods_zone != NULL) {
-    rodsLog(LOG_DEBUG, "iquest_fuse_conf_t_destroy: calling free(conf->irods_zone)");
-    free(conf->irods_zone);
+  if(conf->irods_cwd != NULL) {
+    rodsLog(LOG_DEBUG, "iquest_fuse_conf_t_destroy: calling free(conf->irods_cwd)");
+    free(conf->irods_cwd);
   }
   if(conf->indicator != NULL) {
     rodsLog(LOG_DEBUG, "iquest_fuse_conf_t_destroy: calling free(conf->indicator)");
     free(conf->indicator);
+  }
+  if(conf->slash_remap != NULL) {
+    rodsLog(LOG_DEBUG, "iquest_fuse_conf_t_destroy: calling free(conf->slash_remap)");
+    free(conf->slash_remap);
   }
 }
 
@@ -939,6 +950,7 @@ ifuseLseek (char *path, int descInx, off_t offset)
 int get_iquest_fuse_irods_conn_by_path(iquest_fuse_irods_conn_t **irods_conn, iquest_fuse_t *iqf, char *localPath) {
   int i, status;
   int inuseCnt = 0;
+  rodsLog(LOG_DEBUG, "get_iquest_fuse_irods_conn_by_path: getting connection for localPath=%s", localPath);
   pthread_mutex_lock (&DescLock);
   for (i = 3; i < MAX_IFUSE_DESC; i++) {
     if (inuseCnt >= IFuseDescInuseCnt) break;
@@ -1392,7 +1404,7 @@ pathCache_t **tmpPathCache)
     NewlyCreatedFile[newlyInx].descInx = descInx;
     NewlyCreatedFile[newlyInx].cachedTime = cachedTime;
     IFuseDesc[descInx].newFlag = 1;    /* XXXXXXX use newlyInx ? */
-    fillFileStat (&NewlyCreatedFile[newlyInx].stbuf, mode, 0, cachedTime, 
+    fill_file_stat (&NewlyCreatedFile[newlyInx].stbuf, mode, 0, cachedTime, 
       cachedTime, cachedTime);
     addPathToCache (path, PathArray, &NewlyCreatedFile[newlyInx].stbuf, 
       tmpPathCache);
@@ -1457,10 +1469,7 @@ getDescInxInNewlyCreatedCache (char *path, int flags)
     return descInx;
 }
 
-int
-fillFileStat (struct stat *stbuf, uint mode, rodsLong_t size, uint ctime,
-uint mtime, uint atime)
-{
+int fill_file_stat(struct stat *stbuf, uint mode, rodsLong_t size, uint ctime, uint mtime, uint atime) {
     if (mode >= 0100)
         stbuf->st_mode = S_IFREG | mode;
     else
@@ -1481,9 +1490,7 @@ uint mtime, uint atime)
     return 0;
 }
 
-int
-fillDirStat (struct stat *stbuf, uint ctime, uint mtime, uint atime)
-{
+int fill_dir_stat(struct stat *stbuf, uint ctime, uint mtime, uint atime) {
     stbuf->st_mode = S_IFDIR | IQF_DEFAULT_DIR_MODE;
     stbuf->st_size = IQF_DIR_SIZE;
 
@@ -1542,9 +1549,7 @@ irodsMknodWithCache (char *path, mode_t mode, char *cachePath)
 }
 
 /* need to call get_iquest_fuse_irods_conn before calling irodsOpenWithReadCache */
-int
-irodsOpenWithReadCache (iquest_fuse_irods_conn_t *irods_conn, char *path, int flags)
-{
+int iquest_fuse_open_with_read_cache(iquest_fuse_irods_conn_t *irods_conn, char *path, int flags) {
     pathCache_t *tmpPathCache = NULL;
     struct stat stbuf;
     int status;
@@ -1832,7 +1837,7 @@ int _iquest_fuse_irods_getattr(iquest_fuse_irods_conn_t *irods_conn, const char 
     status = rcObjStat(irods_conn->conn, &dataObjInp, &rodsObjStatOut);
     if (status < 0) {
         if (isReadMsgError (status)) {
-	  rodsLogError(LOG_DEBUG, "_iquest_fuse_irods_getattr: rcObjStat of %s error, attempting to reconnect", path);
+	  rodsLogError(LOG_DEBUG, status, "_iquest_fuse_irods_getattr: rcObjStat of %s error, attempting to reconnect", path);
 	  ifuseReconnect (irods_conn);
 	  status = rcObjStat (irods_conn->conn, &dataObjInp, &rodsObjStatOut);
 	}
@@ -1850,7 +1855,7 @@ int _iquest_fuse_irods_getattr(iquest_fuse_irods_conn_t *irods_conn, const char 
     }
 
     if (rodsObjStatOut->objType == COLL_OBJ_T) {
-	fillDirStat (stbuf, 
+	fill_dir_stat(stbuf, 
 	  atoi (rodsObjStatOut->createTime), atoi (rodsObjStatOut->modifyTime),
 	  atoi (rodsObjStatOut->modifyTime));
     } else if (rodsObjStatOut->objType == UNKNOWN_OBJ_T) {
@@ -1860,7 +1865,7 @@ int _iquest_fuse_irods_getattr(iquest_fuse_irods_conn_t *irods_conn, const char 
         if (rodsObjStatOut != NULL) freeRodsObjStat (rodsObjStatOut);
             return -ENOENT;
     } else {
-	fillFileStat (stbuf, rodsObjStatOut->dataMode, rodsObjStatOut->objSize,
+	fill_file_stat(stbuf, rodsObjStatOut->dataMode, rodsObjStatOut->objSize,
 	  atoi (rodsObjStatOut->createTime), atoi (rodsObjStatOut->modifyTime),
 	  atoi (rodsObjStatOut->modifyTime));
     }
@@ -1877,10 +1882,487 @@ int _iquest_fuse_irods_getattr(iquest_fuse_irods_conn_t *irods_conn, const char 
 
 int iquest_parse_rods_path_str(iquest_fuse_t *iqf, char *in_path, char *out_path) {
   int status;
-  rodsLog(LOG_DEBUG, "iquest_parse_rods_path_str: calling parseRodsPathStr in_path=%s", in_path);
-  status = parseRodsPathStr(in_path, iqf->rodsEnv, out_path);
+  rodsPath_t rodsPath;
+
+  rodsLog(LOG_DEBUG, "iquest_parse_rods_path_str: calling parseRodsPath in_path=%s", in_path);
+  strncpy(rodsPath.inPath, in_path, MAX_NAME_LEN);
+  status = parseRodsPath(&rodsPath, iqf->rodsEnv);
+  if (status < 0) {
+    return status;
+  }
+  strncpy(out_path, rodsPath.outPath, MAX_NAME_LEN);
+
   rodsLog(LOG_DEBUG, "iquest_parse_rods_path_str: returned from parseRodsPathStr with out_path=%s status=%i", out_path, status);
   
+  return status;
+}
+
+int iquest_zone_hint_from_rods_path(iquest_fuse_t *iqf, char *rods_path, char *zone_hint) {
+  char tmp_buf[MAX_NAME_LEN];
+  char *first, *last;
+  
+  strncpy(tmp_buf, rods_path, MAX_NAME_LEN);
+  first = tmp_buf;
+  if(first[0] == '/') {
+    first++;
+  } else {
+    rodsLog(LOG_ERROR, "iquest_zone_hint_from_rods_path: rods_path does not start with /");
+    return -1;
+  }
+  last = strchr(first, '/');
+  if(last != NULL) {
+    last[0] = '\0';
+  }
+  strncpy(zone_hint, first, MAX_NAME_LEN);
+  
+  rodsLog(LOG_DEBUG, "iquest_zone_hint_from_rods_path: rods_path=%s zone_hint=%s", rods_path, zone_hint);
+  return 0;
+}
+
+int iquest_genquery_add_select_str(genQueryInp_t *genQueryInp, char *select) {
+  int m, n;
+  int status = 0;
+  char *agg_op, *col_name;
+  
+  status = separateSelFuncFromAttr( select, &agg_op, &col_name);
+  if( status < 0 ) {
+    rodsLogError(LOG_ERROR, status, "iquest_genquery_add_select_str: separateSelFuncFromAttr");
+    return(status);
+  }
+  
+  m = getSelVal(agg_op); 
+  if (m < 0) {
+    rodsLogError(LOG_ERROR, m, "iquest_genquery_add_select_str: getSelVal(%s)", agg_op);
+    return(m);
+  } else {
+    rodsLog(LOG_DEBUG, "iquest_genquery_add_select_str: getSelVal returned agg_m [%d] for agg_op [%s]", m, agg_op);
+  }
+
+  n = getAttrIdFromAttrName(col_name);
+  if (n < 0) {
+    rodsLogError(LOG_ERROR, n, "iquest_genquery_add_select_str: getAttrIdFromAttrName");
+    return(n);
+  } else {
+    rodsLog(LOG_DEBUG, "iquest_genquery_add_select_str: getAttrIdFromAttrName returned AttrId [%d] for AttrName [%s]", n, col_name);
+  }
+
+  status = addInxIval(&genQueryInp->selectInp, n, m);
+  if( status < 0) {
+    rodsLogError(LOG_ERROR, n, "iquest_genquery_add_select_str: addInxIval");
+  }
+
+  return(status);
+}
+
+/*
+  iquest_fuse_query_cond_t * iquest_genquery_get_where_conds(genQueryInp_t *genQueryInp) {
+  iquest_fuse_query_cond_t iqf_query_cond;
+  iqf_query_cond->cond = &genQueryInp->condInput;
+  iqf_query_cond->sqlCond = &genQueryInp->sqlCondInp;
+  
+  return ;
+  }
+*/
+
+int iquest_genquery_set_query_cond(genQueryInp_t *genQueryInp, iquest_fuse_query_cond_t *query_cond) {
+  int status;
+
+  status = clearInxVal( &genQueryInp->sqlCondInp );
+  if( status < 0) {
+    return -1;
+  }
+  genQueryInp->sqlCondInp = *query_cond->where_cond;
+
+  status = clearKeyVal( &genQueryInp->condInput );
+  if( status < 0) {
+    return -1;
+  }
+  genQueryInp->condInput = *query_cond->cond;
+  
+  return 0;
+}
+
+int iquest_genquery_add_where_str(genQueryInp_t *genQueryInp, char *where_attr, char *where_op, char *where_val) {
+  int status;
+
+  status = iquest_where_cond_add(&genQueryInp->sqlCondInp, where_attr, where_op, where_val);
+  
+  return(status);
+}
+
+int iquest_where_cond_add(inxValPair_t *where_cond, char *where_attr, char *where_op, char *where_val) {
+  int n = -1;
+  int status;
+
+  n = getAttrIdFromAttrName(where_attr);
+  if (n >= 0) {
+    rodsLog(LOG_DEBUG, "iquest_where_cond_add: getAttrIdFromAttrName returned AttrId [%d] for AttrName [%s]", n, where_attr);
+    return _iquest_where_cond_add(where_cond, where_attr, where_op, where_val);
+  } else {
+    /* the where_attr is not a standard name, assume it is a metadata attribute */
+    rodsLog(LOG_DEBUG, "iquest_where_cond_add: getAttrIdFromAttrName did not match for %s, adding as metadata", where_attr);
+    status = _iquest_where_cond_add(where_cond, "META_DATA_ATTR_NAME", "=", where_attr);
+    if( status < 0 ) {
+      rodsLogError(LOG_ERROR, status, "iquest_where_cond_add: adding META_DATA_ATTR_NAME");
+      return status;
+    }
+    status = _iquest_where_cond_add(where_cond, "META_DATA_ATTR_VALUE", where_op, where_val);
+    if( status < 0) {
+      rodsLogError(LOG_ERROR, status, "iquest_where_cond_add: adding META_DATA_ATTR_VALUE");
+      return status;
+    }
+  }
+  
+  return(status);
+}
+
+int _iquest_where_cond_add(inxValPair_t *where_cond, char *where_attr, char *where_op, char *where_val) {
+  int n = -1;
+  int status = 0;
+  char *where_cond_str = NULL;
+
+  rodsLog(LOG_DEBUG, "_iquest_where_cond_add: adding [%s] [%s] [%s] to query_cond", where_attr, where_op, where_val);
+  n = getAttrIdFromAttrName(where_attr);
+  if (n < 0) {
+    rodsLogError(LOG_ERROR, n, "_iquest_where_cond_add: getAttrIdFromAttrName could not find attribute [%s]", where_attr);
+    return(n);
+  }
+  
+  status = asprintf( &where_cond_str, "%s '%s'", where_op, where_val );
+  if( status < 0 ) {
+    rodsLog(LOG_ERROR, "_iquest_where_cond_add: could not allocate memory for where_cond_str");
+    return(status);
+  } else {
+    status = addInxVal( where_cond, n, where_cond_str );
+    free(where_cond_str);
+  }
+  if( status < 0) {
+    rodsLogError(LOG_ERROR, n, "_iquest_where_cond_add: addInxIval");
+  }
+  
+  return(status);
+}
+
+/*
+ * checks if the specified attr is valid given the query
+ * returns 0 if the attr exists, error (<0) otherwise
+ */
+int iquest_query_attr_exists(iquest_fuse_t *iqf, char *query_zone, iquest_fuse_query_cond_t *query_cond, char *attr) {
+  genQueryInp_t genQueryInp;
+  genQueryOut_t *genQueryOut = NULL;
+  int status;
+  iquest_fuse_irods_conn_t *irods_conn = NULL;
+  int nf, nr;
+  char *found_attr;
+
+  rodsLog(LOG_DEBUG, "iquest_query_attr_exists: attr [%s]", attr);
+  
+  memset(&genQueryInp, 0, sizeof (genQueryInp_t));
+  status = iquest_genquery_set_query_cond(&genQueryInp, query_cond);
+  
+  if( query_zone != NULL && query_zone[0] != '\0' ) { 
+    status = addKeyVal( &genQueryInp.condInput, ZONE_KW, query_zone);
+    if( status < 0) {
+      rodsLogError(LOG_ERROR, status, "iquest_query_attr_exists: addKeyVal");
+      return status;
+    }
+    rodsLog(LOG_DEBUG, "iquest_query_attr_exists: query_zone is %s", query_zone);
+  }
+
+  iquest_genquery_add_select_str(&genQueryInp, "META_DATA_ATTR_NAME");
+  iquest_genquery_add_where_str(&genQueryInp, "META_DATA_ATTR_NAME", "=", attr);
+  
+  genQueryInp.maxRows = MAX_SQL_ROWS;
+  genQueryInp.continueInx=0;
+  
+  status = get_iquest_fuse_irods_conn(&irods_conn, iqf);
+  if (status != 0) {
+    return status;
+  }
+  
+  /* now that we are connected, we can't return until cleanup */
+
+  rodsLog(LOG_DEBUG, "iquest_query_attr_exists: calling rcGenQuery");
+  status = rcGenQuery(irods_conn->conn, &genQueryInp, &genQueryOut);
+  if( status < 0 ) {
+    goto cleanup;
+  }
+
+  nf = genQueryOut->attriCnt;
+  if(nf != 1) {
+    status = -200;
+    goto cleanup;
+  }
+  
+  nr = genQueryOut->rowCnt;
+  if( nr != 1 ) {
+    rodsLog(LOG_DEBUG, "iquest_query_attr_exists: have %d rows", nr);
+    status = -1;
+    goto cleanup;
+  }
+
+  rodsLog(LOG_DEBUG, "iquest_query_attr_exists: have %d fields and %d rows", nf, nr);
+
+  found_attr = &((&genQueryOut->sqlResult[0])->value[0]);
+  if( strcmp(found_attr, attr) != 0 ) {
+    rodsLog(LOG_DEBUG, "iquest_query_attr_exists: results were not equal [%s] != [%s]", found_attr, attr);
+    status = -1;
+    goto cleanup;
+  }
+  
+ cleanup:
+  relIFuseConn (irods_conn);
+  
+  rodsLog(LOG_DEBUG, "iquest_query_attr_exists: attr [%s] status [%d]", attr, status);
+  return status;
+}
+
+/*
+ * checks if the specified value is valid given the query
+ * returns 0 if the value exists, error (<0) otherwise
+ */
+int iquest_query_value_exists(iquest_fuse_t *iqf, char *query_zone, iquest_fuse_query_cond_t *query_cond, char *attr, char *value) {
+  genQueryInp_t genQueryInp;
+  genQueryOut_t *genQueryOut = NULL;
+  int status;
+  iquest_fuse_irods_conn_t *irods_conn = NULL;
+  int nf, nr;
+  char *found_attr;
+
+  rodsLog(LOG_DEBUG, "iquest_query_value_exists: attr [%s]", attr);
+  
+  memset(&genQueryInp, 0, sizeof (genQueryInp_t));
+  status = iquest_genquery_set_query_cond(&genQueryInp, query_cond);
+  
+  if( query_zone != NULL && query_zone[0] != '\0' ) { 
+    status = addKeyVal( &genQueryInp.condInput, ZONE_KW, query_zone);
+    if( status < 0) {
+      rodsLogError(LOG_ERROR, status, "iquest_query_value_exists: addKeyVal");
+      return status;
+    }
+    rodsLog(LOG_DEBUG, "iquest_query_value_exists: query_zone is %s", query_zone);
+  }
+
+  iquest_genquery_add_select_str(&genQueryInp, "META_DATA_ATTR_NAME");
+  iquest_genquery_add_where_str(&genQueryInp, "META_DATA_ATTR_NAME", "=", attr);
+  
+  genQueryInp.maxRows = MAX_SQL_ROWS;
+  genQueryInp.continueInx=0;
+  
+  status = get_iquest_fuse_irods_conn(&irods_conn, iqf);
+  if (status != 0) {
+    return status;
+  }
+  
+  /* now that we are connected, we can't return until cleanup */
+
+  rodsLog(LOG_DEBUG, "iquest_query_value_exists: calling rcGenQuery");
+  status = rcGenQuery(irods_conn->conn, &genQueryInp, &genQueryOut);
+  if( status < 0 ) {
+    goto cleanup;
+  }
+
+  nf = genQueryOut->attriCnt;
+  if(nf != 1) {
+    status = -200;
+    goto cleanup;
+  }
+  
+  nr = genQueryOut->rowCnt;
+  if( nr != 1 ) {
+    rodsLog(LOG_DEBUG, "iquest_query_value_exists: have %d rows", nr);
+    status = -1;
+    goto cleanup;
+  }
+
+  rodsLog(LOG_DEBUG, "iquest_query_value_exists: have %d fields and %d rows", nf, nr);
+
+  found_attr = &((&genQueryOut->sqlResult[0])->value[0]);
+  if( strcmp(found_attr, attr) != 0 ) {
+    rodsLog(LOG_DEBUG, "iquest_query_value_exists: results were not equal [%s] != [%s]", found_attr, attr);
+    status = -1;
+    goto cleanup;
+  }
+  
+ cleanup:
+  relIFuseConn (irods_conn);
+  
+  rodsLog(LOG_DEBUG, "iquest_query_value_exists: attr [%s] status [%d]", attr, status);
+  return status;
+}
+
+int iquest_query_and_fill_attr_list(iquest_fuse_t *iqf, char *query_zone, iquest_fuse_query_cond_t *query_cond, void *buf, fuse_fill_dir_t filler) {
+  genQueryInp_t genQueryInp;
+  genQueryOut_t *genQueryOut = NULL;
+  int status;
+  struct stat stbuf;
+
+  rodsLog(LOG_DEBUG, "iquest_query_and_fill_attr_list");
+
+  memset(&genQueryInp, 0, sizeof (genQueryInp_t));
+  status = iquest_genquery_set_query_cond(&genQueryInp, query_cond);
+
+  memset(&stbuf, 0, sizeof(struct stat));
+
+  if( query_zone != NULL && query_zone[0] != '\0' ) { 
+    addKeyVal( &genQueryInp.condInput, ZONE_KW, query_zone);
+    if( status < 0) {
+      rodsLogError(LOG_ERROR, status, "iquest_query_and_fill_value_list: addKeyVal");
+      return status;
+    }
+    rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: query_zone is %s", query_zone);
+  }
+
+  // SELECT META_DATA_ATTR_NAME
+  iquest_genquery_add_select_str(&genQueryInp, "META_DATA_ATTR_NAME");
+
+  // WHERE
+  //iquest_genquery_add_where_str(&genQueryInp, "META_DATA_ATTR_NAME", "=", "target");
+
+  genQueryInp.maxRows = MAX_SQL_ROWS;
+  genQueryInp.continueInx=0;
+
+  fill_dir_stat(&stbuf, 0, 0, 0);
+
+  int connstat = -1;
+  iquest_fuse_irods_conn_t *irods_conn = NULL;
+  connstat = get_iquest_fuse_irods_conn(&irods_conn, iqf);
+  if (connstat != 0) {
+    return connstat;
+  }
+
+  /* now that we are connected, we can't return until cleanup */
+
+  rodsLog(LOG_DEBUG, "iquest_query_and_fill_attr_list: calling rcGenQuery");
+  status = rcGenQuery(irods_conn->conn, &genQueryInp, &genQueryOut);
+  if( status < 0 ) {
+    goto cleanup;
+  }
+  do {
+    sqlResult_t *v[MAX_SQL_ATTR];
+    int i, nf, nr;
+    nf = genQueryOut->attriCnt;
+    if(nf != 1) {
+      status = -200;
+      break;
+    }
+    
+    for (i = 0; i < nf; i++) {
+      v[i] = &genQueryOut->sqlResult[i];
+      //cname[i] = getAttrNameFromAttrId(v[i]->attriInx);
+      //if (cname[i] == NULL)
+      //return(NO_COLUMN_NAME_FOUND);
+    }
+    
+    nr = genQueryOut->rowCnt;
+    rodsLog(LOG_DEBUG, "iquest_query_and_fill_attr_list: have %d attributes and %d rows", nf, nr);
+    for( i = 0; i < nr; i++ ) {
+      //&v[0]->value[v[0]->len * i],&v[1]->value[v[1]->len * i]
+      //rodsLog(LOG_DEBUG, "iquest_query_and_fill_attr_list: calling filler(%s)", &v[0]->value[v[0]->len * i]);
+      filler(buf, &v[0]->value[v[0]->len * i], &stbuf, 0);
+    }
+
+    genQueryInp.continueInx=genQueryOut->continueInx;
+    rodsLog(LOG_DEBUG, "iquest_query_and_fill_attr_list: calling rcGenQuery");
+    status = rcGenQuery(irods_conn->conn, &genQueryInp, &genQueryOut);
+    if (status < 0) {
+      goto cleanup;
+    }
+  } while (status==0 && genQueryOut->continueInx > 0);
+
+  /* add built-in column names */
+  int i = 0;
+  for(i = 0; i < NumOfColumnNames; i++) {
+    //filler(buf, columnNames[i].columnName, &stbuf, 0);
+  }
+  
+ cleanup:
+  relIFuseConn (irods_conn);
+  return status;
+}
+
+int iquest_query_and_fill_value_list(iquest_fuse_t *iqf, char *query_zone, iquest_fuse_query_cond_t *query_cond, char *attr, void *buf, fuse_fill_dir_t filler) {
+  genQueryInp_t genQueryInp;
+  genQueryOut_t *genQueryOut = NULL;
+  int status;
+  struct stat stbuf;
+
+  rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: called with attr [%s]",attr);
+  
+  memset(&genQueryInp, 0, sizeof (genQueryInp_t));
+  status = iquest_genquery_set_query_cond(&genQueryInp, query_cond);
+  if( status < 0 ) {
+    return -1;
+  }
+
+  memset(&stbuf, 0, sizeof(struct stat));
+
+  //  if( iqf->conf->irods_zone != NULL && iqf->conf->irods_zone[0] != '\0' ) { 
+  //    addKeyVal( &genQueryInp.condInput, ZONE_KW, iqf->conf->irods_zone);
+  //    rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: zone is %s", iqf->conf->irods_zone);
+  //  }
+  if( query_zone != NULL && query_zone[0] != '\0' ) { 
+    addKeyVal( &genQueryInp.condInput, ZONE_KW, query_zone);
+    rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: query_zone is %s", query_zone);
+  }
+
+  iquest_genquery_add_select_str(&genQueryInp, "META_DATA_ATTR_VALUE");
+
+  iquest_genquery_add_where_str(&genQueryInp, "META_DATA_ATTR_NAME", "=", attr);
+
+  genQueryInp.maxRows= MAX_SQL_ROWS;
+  genQueryInp.continueInx=0;
+
+  fill_dir_stat(&stbuf, 0, 0, 0);
+
+  int connstat = -1;
+  iquest_fuse_irods_conn_t *irods_conn = NULL;
+  connstat = get_iquest_fuse_irods_conn(&irods_conn, iqf);
+  if (connstat != 0) {
+    return connstat;
+  }
+
+  /* now that we are connected, we can't return until cleanup */
+
+  rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: calling rcGenQuery");
+  status = rcGenQuery(irods_conn->conn, &genQueryInp, &genQueryOut);
+  if( status < 0 ) {
+    goto cleanup;
+  }
+  do {
+    sqlResult_t *v[MAX_SQL_ATTR];
+    int i, nf, nr;
+    nf = genQueryOut->attriCnt;
+    if(nf != 1) {
+      status = -200;
+      break;
+    }
+    
+    for (i = 0; i < nf; i++) {
+      v[i] = &genQueryOut->sqlResult[i];
+      //cname[i] = getAttrNameFromAttrId(v[i]->attriInx);
+      //if (cname[i] == NULL)
+      //return(NO_COLUMN_NAME_FOUND);
+    }
+
+    nr = genQueryOut->rowCnt;
+    rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: have %d attributes and %d rows", nf, nr);
+    for( i = 0; i < nr; i++ ) {
+      //&v[0]->value[v[0]->len * i],&v[1]->value[v[1]->len * i]
+      //rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: calling filler(%s)", &v[0]->value[v[0]->len * i]);
+      filler(buf, &v[0]->value[v[0]->len * i], &stbuf, 0);
+    }
+
+    genQueryInp.continueInx=genQueryOut->continueInx;
+    rodsLog(LOG_DEBUG, "iquest_query_and_fill_value_list: calling rcGenQuery");
+    status = rcGenQuery(irods_conn->conn, &genQueryInp, &genQueryOut);
+    if (status < 0) {
+      goto cleanup;
+    }
+  } while (status==0 && genQueryOut->continueInx > 0);
+  
+ cleanup:
+  relIFuseConn (irods_conn);
   return status;
 }
 
@@ -1944,14 +2426,173 @@ int queryAndShowStrCond(rcComm_t *conn, char *hint, char *format,
 }
 #endif
 
+void * malloc_and_zero_or_exit(int size) {
+  void * pointer = malloc(size);
+  if(pointer == NULL) {
+    fprintf(stderr, "malloc_or_exit: malloc(%d)\n", size);
+    exit(2);
+  }
+  bzero(pointer, size);
+  return pointer;
+}
 
-int iquest_parse_fuse_path(const char *path, char *rodspath, char *query) {
-  char *sep = "\/";
-  rodsLog(LOG_DEBUG, "iquestParseFusePath: %s", path);
+/*
+ * allocate memory and initialise iquest_fuse_query_cond_t 
+ */
+int iquest_fuse_query_cond_create(iquest_fuse_query_cond_t **query_cond) {
+  *query_cond = malloc_and_zero_or_exit(sizeof(iquest_fuse_query_cond_t));
+  bzero(*query_cond, sizeof(iquest_fuse_query_cond_t));
+  (*query_cond)->cond = malloc_and_zero_or_exit(sizeof(keyValPair_t));
+  (*query_cond)->where_cond = malloc_and_zero_or_exit(sizeof(inxValPair_t));
+  return 0;
+}
 
-  //  strtok_r(path, sep, 
+/*
+ * free memory from iquest_fuse_query_cond_t 
+ */
+int iquest_fuse_query_cond_destroy(iquest_fuse_query_cond_t *query_cond) {
+  clearInxVal(query_cond->where_cond);
+  free(query_cond->where_cond);
+
+  clearKeyVal(query_cond->cond);
+  free(query_cond->cond);
+
+  free(query_cond);
   
   return 0;
+}
+
+/*
+ * copy src iquest_fuse_query_cond_t to dest iquest_fuse_query_cond_t
+ * (allocates memory for dest)
+ */
+int iquest_fuse_query_cond_copy(iquest_fuse_query_cond_t *src, iquest_fuse_query_cond_t *dest) {
+  int status;
+  int i;
+  char *tmp;
+
+  status = iquest_fuse_query_cond_create(&dest);
+  if( status < 0) {
+    return -1;
+  }
+
+  for( i=0; i < src->where_cond->len; i++ ) {
+    tmp = getValByInx( src->where_cond, i );
+    status = addInxVal( dest->where_cond, i, tmp );
+    if( status < 0) {
+      return -1;
+    }
+  }
+  
+  keyValToString( src->cond, &tmp ); /* allocates memory for tmp */
+  if( status < 0 ) {
+    return -1;
+  }
+  keyValFromString( tmp, &dest->cond );
+  free( tmp );
+  
+  return 0;
+}
+
+/*
+ * Parses path into rodspath and query
+ * allocates memory for rods_path, query, query_part_attr, and post_query_path pointers - must be freed externally
+ */
+int iquest_parse_fuse_path(iquest_fuse_t *iqf, char *path, char **rods_path, iquest_fuse_query_cond_t **query_cond, char **query_part_attr, char **post_query_path) {
+  char *saveptr = NULL;
+  char *token = NULL;
+  int status;
+  rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: %s", path);
+
+  if(*rods_path != NULL || *query_cond != NULL || *query_part_attr != NULL || *post_query_path != NULL) {
+    rodsLog(LOG_ERROR, "iquest_parse_fuse_path: rods_path, query_cond, query_part_attr, and post_query_path should be NULL");
+    return -1;
+  }
+
+  int query_mode = -1;
+  
+  int path_len = strlen(path);
+
+  /* allocate memory for query_cond -- must be freed externally */
+  status = iquest_fuse_query_cond_create(query_cond);
+  if( status < 0) {
+    rodsLog(LOG_ERROR, "iquest_parse_fuse_path: could not create query_cond");
+  }
+  
+  /* allocate memory for temporary buffers */
+  char *rods_path_tmp = malloc_and_zero_or_exit(path_len+1);
+  char *query_tmp = malloc_and_zero_or_exit(path_len+1);
+  char *query_part_attr_tmp = malloc_and_zero_or_exit(path_len+1); 
+  char *post_query_path_tmp = malloc_and_zero_or_exit(path_len+1);
+
+  /*
+    if(path[0] == '/') {
+    strcat(rods_path_tmp, IQF_PATH_SEP);
+    path++;
+    }
+  */
+  
+  token = strtok_r(path, IQF_PATH_SEP, &saveptr);
+  if(token == NULL) {
+    /* no delimiters in path, return whole path */
+    strcat(rods_path_tmp, path);
+  } else {
+    do {
+      rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: have token [%s] query_mode [%d]", token, query_mode);
+      if(query_mode > 0) {
+	/* we are in the middle of a query specfication */
+	if(query_mode >= 2) {
+	  /* attribute section */
+	  rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: have attribute %s", token);
+	  strcpy(query_part_attr_tmp, token);
+	} else if(query_mode >= 1) {
+	  /* value section */
+	  rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: have value %s", token);
+	  iquest_where_cond_add((*query_cond)->where_cond, query_part_attr_tmp, "=", token);
+	  strcpy(query_part_attr_tmp, "");
+	}
+	query_mode--;
+      } else {
+	int indicator_len = strlen(iqf->conf->indicator);
+	if(strncmp(token, iqf->conf->indicator, indicator_len) == 0) {
+	  /* token is the query indicator, process the next two tokens in query_mode */
+	  query_mode = 2;
+	} else {
+	  if(query_mode < 0) {
+	    /* this is pre-query path */
+	    rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: have path component %s", token);
+	    strcat(rods_path_tmp, token);
+	    strcat(rods_path_tmp, IQF_PATH_SEP);
+	  } else {
+	    /* this is post-query path */
+	    rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: have post-query path component %s", token);
+	    strcat(post_query_path_tmp, token);
+	    strcat(post_query_path_tmp, IQF_PATH_SEP);
+	  }
+	}
+      }
+    } while( (token = strtok_r(NULL, IQF_PATH_SEP, &saveptr)) != NULL);
+  }
+
+  /* set output buffers to actual size and free temporary buffers */
+  free(query_tmp);
+  
+  *query_part_attr = strdup(query_part_attr_tmp); /* allocates memory for query_part_attr -- must be freed externally */
+  free(query_part_attr_tmp);
+  
+  /* cut-off the last character of rods_path and post_query_path */
+  *rods_path = strndup(rods_path_tmp, strlen(rods_path_tmp)-1); /* allocates memory for rods_path -- must be freed externally */
+  free(rods_path_tmp);
+  
+  *post_query_path = strndup(post_query_path_tmp, strlen(post_query_path_tmp)-1); /* allocates memory for post_query_path -- must be freed externally */
+  free(post_query_path_tmp);
+  
+  rodsLog(LOG_DEBUG, "iquest_parse_fuse_path: %s split into rods_path [%s] query_part_attr [%s] post_query_path [%s]", path, *rods_path, *query_part_attr, *post_query_path);
+
+  /* return the query_mode, which will be 0 if there were no queries or if all queries were completed */
+  /* it will be 2 if this is a /Q directory (i.e. it should list possible attributes */
+  /* it will be 1 if this is a /Q/attr/ directory (i.e. it should list possible values */
+  return query_mode;
 }
 
 /*
@@ -2016,7 +2657,7 @@ int iquest_readdir_coll(iquest_fuse_t *iqf, const char *path, void *buf, fuse_fi
         if (collEnt.objType == DATA_OBJ_T) {
 	    filler (buf, collEnt.dataName, NULL, 0);
 #ifdef CACHE_FUSE_PATH
-	    if (strcmp (path, "/") == 0) {
+	    if (strcmp (path, IQF_PATH_SEP) == 0) {
 	        snprintf (childPath, MAX_NAME_LEN, "/%s", collEnt.dataName);
 	    } else {
 	        snprintf (childPath, MAX_NAME_LEN, "%s/%s", 
@@ -2024,7 +2665,7 @@ int iquest_readdir_coll(iquest_fuse_t *iqf, const char *path, void *buf, fuse_fi
 	    }
             if (matchPathInPathCache ((char *) childPath, PathArray, 
 	      &tmpPathCache) != 1) {
-	        fillFileStat (&stbuf, collEnt.dataMode, collEnt.dataSize,
+	        fill_file_stat(&stbuf, collEnt.dataMode, collEnt.dataSize,
 	          atoi (collEnt.createTime), atoi (collEnt.modifyTime), 
 	          atoi (collEnt.modifyTime));
 	        addPathToCache (childPath, PathArray, &stbuf, &tmpPathCache);
@@ -2034,14 +2675,14 @@ int iquest_readdir_coll(iquest_fuse_t *iqf, const char *path, void *buf, fuse_fi
 	    splitPathByKey (collEnt.collName, myDir, mySubDir, '/');
 	    filler (buf, mySubDir, NULL, 0);
 #ifdef CACHE_FUSE_PATH
-            if (strcmp (path, "/") == 0) {
+            if (strcmp (path, IQF_PATH_SEP) == 0) {
                 snprintf (childPath, MAX_NAME_LEN, "/%s", mySubDir);
             } else {
 	        snprintf (childPath, MAX_NAME_LEN, "%s/%s", path, mySubDir);
 	    }
             if (matchPathInPathCache ((char *) childPath, PathArray, 
               &tmpPathCache) != 1) {
-	        fillDirStat (&stbuf, 
+	        fill_dir_stat(&stbuf, 
 	          atoi (collEnt.createTime), atoi (collEnt.modifyTime), 
 	          atoi (collEnt.modifyTime));
 	        addPathToCache (childPath, PathArray, &stbuf, &tmpPathCache);

@@ -39,14 +39,14 @@ incDir =	$(fuseDir)/include
 # Source files
 #
 OBJS =		\
-		$(objDir)/iquestFuse.o
+		$(objDir)/iquest_fuse.o \
 
 BINS =		\
-		$(binDir)/iquestFuse \
+		$(binDir)/iquest_fuse \
 
 LIB_OBJS =	\
-		$(objDir)/iquestFuseOperations.o \
-		$(objDir)/iquestFuseHelper.o
+		$(objDir)/iquest_fuse_operations.o \
+		$(objDir)/iquest_fuse_lib.o \
 
 INCLUDES +=	-I$(incDir)
 

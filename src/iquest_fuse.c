@@ -27,10 +27,8 @@
 
 /*
  ******************************************************************************
- * iquestFuse.c 
  * Contains the main executable program for iquestFuse, a FUSE-based
- * filesystem that presents a read-only query-based view of an iRODS
- * zone
+ * filesystem that presents a read-only query-based view of iRODS
  ******************************************************************************
  */
 
@@ -42,13 +40,9 @@
 #include <pthread.h>
 #include <string.h>
 
-#include "iquestFuse.h"
-#include "iquestFuseOperations.h"
-#include "iquestFuseHelper.h"
-
-
-//TODO eliminate global
-//rodsEnv IquestRodsEnv;
+#include "iquest_fuse.h"
+#include "iquest_fuse_operations.h"
+#include "iquest_fuse_lib.h"
 
 static struct fuse_operations iquest_fuse_operations = {
   .init = iquest_fuse_init,
@@ -57,6 +51,7 @@ static struct fuse_operations iquest_fuse_operations = {
   .readdir = iquest_fuse_readdir,
   .open = iquest_fuse_open,
   .read = iquest_fuse_read,
+  .release = iquest_fuse_release,
 #if 0
   .readlink = iquest_fuse_readlink,
   .mknod = iquest_fuse_mknod,
@@ -72,7 +67,6 @@ static struct fuse_operations iquest_fuse_operations = {
   .utimens = iquest_fuse_utimens,
   .write = iquest_fuse_write,
   .statfs = iquest_fuse_statfs,
-  .release = iquest_fuse_release,
   .fsync = iquest_fuse_fsync,
   .flush = iquest_fuse_flush,
 #endif
@@ -84,22 +78,29 @@ static struct fuse_operations iquest_fuse_operations = {
  * Options given by FUSE_OPT_KEY are passed to iquest_fuse_opt_proc for handling (using the given key)
  */
 static struct fuse_opt iquest_fuse_opts[] = {
-  IQUEST_FUSE_OPT("-q %s",		base_query,	0),
-  IQUEST_FUSE_OPT("--query=%s",		base_query,	0),
-  IQUEST_FUSE_OPT("query=%s",		base_query,	0),
+  IQUEST_FUSE_OPT("-q %s",			base_query,	0),
+  IQUEST_FUSE_OPT("--query=%s",			base_query,	0),
+  IQUEST_FUSE_OPT("query=%s",			base_query,	0),
 
-  IQUEST_FUSE_OPT("-z %s",		irods_zone,	0),
-  IQUEST_FUSE_OPT("--zone=%s",		irods_zone,	0),
-  IQUEST_FUSE_OPT("zone=%s",		irods_zone,	0),
+  IQUEST_FUSE_OPT("-c %s",			irods_cwd,	0),
+  IQUEST_FUSE_OPT("--cwd=%s",			irods_cwd,	0),
+  IQUEST_FUSE_OPT("cwd=%s",			irods_cwd,	0),
 
-  IQUEST_FUSE_OPT("-i %s",		indicator,	0),
-  IQUEST_FUSE_OPT("--indicator=%s",	indicator,	0),
-  IQUEST_FUSE_OPT("indicator=%s",	indicator,	0),
+  IQUEST_FUSE_OPT("-i %s",			indicator,	0),
+  IQUEST_FUSE_OPT("--indicator=%s",		indicator,	0),
+  IQUEST_FUSE_OPT("indicator=%s",		indicator,	0),
 
-  IQUEST_FUSE_OPT("--require-conn",	require_conn,	1),
-  IQUEST_FUSE_OPT("require-conn",	require_conn,	1),
-  IQUEST_FUSE_OPT("--no-require-conn",	require_conn,	0),
-  IQUEST_FUSE_OPT("no-require-conn",	require_conn,	0),
+  IQUEST_FUSE_OPT("-r %s",			slash_remap,	0),
+  IQUEST_FUSE_OPT("--remap-slash-char=%s",	slash_remap,	0),
+  IQUEST_FUSE_OPT("remap-slash-char=%s",	slash_remap,	0),
+
+  IQUEST_FUSE_OPT("--require-conn",		require_conn,	1),
+  IQUEST_FUSE_OPT("require-conn",		require_conn,	1),
+  IQUEST_FUSE_OPT("--no-require-conn",		require_conn,	0),
+  IQUEST_FUSE_OPT("no-require-conn",		require_conn,	0),
+
+  IQUEST_FUSE_OPT("--show-indicator",		show_indicator,	1),
+  IQUEST_FUSE_OPT("show-indicator",		show_indicator,	1),
 
   FUSE_OPT_KEY("--debug",        IQUEST_FUSE_CONF_KEY_DEBUG_ME), /* the --debug option is only recongnised by iquestFuse, not FUSE itself */
   FUSE_OPT_KEY("--debug-trace",  IQUEST_FUSE_CONF_KEY_TRACE_ME), 
@@ -135,9 +136,11 @@ void usage(char *progname) {
 	  "iquestFuse options:\n"
 	  "  POSIX options:       GNU long options:             Mount options (within -o):\n"
 	  "    -q base-query        --query=base-query            query=base-query\n"
-	  "    -z irods-zone        --zone=irods-zone             zone=irods-zone\n"
 	  "    -i query-indicator   --indicator=query-indicator   indicator=query-indicator\n"
+	  "    -c irods-cwd         --cwd=irods-cwd               cwd=irods-cwd\n"
+	  "    -r c                 --remap-slash-char=c          remap-slash-char=c\n"
 	  "                         --require-conn                require-conn\n"
+	  "                         --show-indicator              show-indicator\n"
 	  "\n"
 	  , progname);
 }
@@ -211,7 +214,7 @@ int main(int argc, char **argv) {
   struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
 
   /*
-   * Set defaults for dyanmically allocated conf fields that have not been set by options
+   * Set defaults for dynamically allocated conf fields that have not been set by options
    */
   if(iqf->conf->indicator == NULL) {
     int bufsize = strlen(IQF_DEFAULT_INDICATOR)+1;
@@ -223,14 +226,29 @@ int main(int argc, char **argv) {
     strncpy(iqf->conf->indicator, IQF_DEFAULT_INDICATOR, bufsize);
   }
   
+  if(iqf->conf->slash_remap == NULL) {
+    int bufsize = strlen(IQF_DEFAULT_SLASH_REMAP)+1;
+    iqf->conf->slash_remap = malloc(bufsize);
+    if(iqf->conf->slash_remap == NULL) {
+      fprintf(stderr, "main: malloc(%d) setting default for iqf->conf->slash_remap\n", bufsize);
+      exit(2);
+    }
+    strncpy(iqf->conf->slash_remap, IQF_DEFAULT_SLASH_REMAP, bufsize);
+  }
+  
   /*
    * Set configuration in iquest_fuse_conf from command-line options and 
    * call iquest_fuse_opt_proc for other options
    */
   fuse_opt_parse(&args, &iquest_fuse_conf, iquest_fuse_opts, iquest_fuse_opt_proc);
 
-  if(iqf->conf->irods_zone != NULL) {
-    rodsLog(LOG_NOTICE, "using iRODS zone %s", iqf->conf->irods_zone);
+  
+  if(iqf->conf->irods_cwd != NULL) {
+    rodsLog(LOG_NOTICE, "using iRODS cwd %s", iqf->conf->irods_cwd);
+    status = setenv("irodsCwd", iqf->conf->irods_cwd, 1);
+    if( status < 0) {
+      rodsLog(LOG_ERROR, "main: could not set irodsCwd environment variable");
+    }
   }
   
   if(iqf->conf->base_query != NULL) {
@@ -239,6 +257,14 @@ int main(int argc, char **argv) {
   
   if(iqf->conf->indicator != NULL) {
     rodsLog(LOG_NOTICE, "using indicator %s", iqf->conf->indicator);
+  }
+  
+  if(iqf->conf->slash_remap != NULL) {
+    rodsLog(LOG_NOTICE, "remapping slashes [/] in metadata to [%s]", iqf->conf->slash_remap);
+  }
+
+  if(iqf->conf->show_indicator > 0) {
+    rodsLog(LOG_SYS_WARNING, "showing query indicator (%s) in directory listings -- you must not attempt to recursively list directories (e.g. don't use find, du, ls -R, etc)", iqf->conf->indicator);
   }
   
 
@@ -250,11 +276,12 @@ int main(int argc, char **argv) {
    * get iRODS configuration from environment and conf file (~/.irods/.irodsEnv)
    */
   status = getRodsEnv(iqf->rodsEnv);
-  if (status < 0) {
+  if( status < 0 ) {
     rodsLogError(LOG_ERROR, status, "main: getRodsEnv error. ");
     exit(1);
   }
-  
+
+
   /* 
    * override irodsLogLevel if debug_level is greater
    */
@@ -266,21 +293,6 @@ int main(int argc, char **argv) {
   
   initPathCache ();
   initIFuseDesc ();
-  
-
-  /*
-   * Try to make an iRODS connection now and optionally exit with error if it is not connected
-   */
-  int connstat = -1;
-  iquest_fuse_irods_conn_t *irods_conn = NULL;
-  connstat = get_iquest_fuse_irods_conn(&irods_conn, iqf);
-  if(connstat != 0) {
-    rodsLogError(LOG_ERROR, connstat, "main");
-    if(iqf->conf->require_conn > 0) {
-      rodsLog(LOG_ERROR, "iRODS connection failure and require-conn option in effect");
-      exit(4);
-    }
-  };
   
 
   /*

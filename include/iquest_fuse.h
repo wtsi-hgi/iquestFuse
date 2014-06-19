@@ -26,8 +26,6 @@
  *****************************************************************************/
 
 /*****************************************************************************
- * iquestFuse.h
- * 
  * Header for main program for iquestFuse.
  *****************************************************************************/
 #ifndef IQUEST_FUSE_H
@@ -74,6 +72,8 @@
 #define IQF_DEFAULT_FILE_MODE	0660
 #define IQF_DEFAULT_DIR_MODE	0770
 #define IQF_DEFAULT_INDICATOR   "Q"
+#define IQF_DEFAULT_SLASH_REMAP "\\"
+#define IQF_PATH_SEP            "/"
 
 #define IQF_CONN_TIMEOUT	120	/* 2 min connection timeout */
 #define IQF_CONN_MANAGER_SLEEP_TIME 60
@@ -89,15 +89,17 @@
  */
 typedef struct iquest_fuse_conf {
   char *base_query;
-  char *irods_zone; 
+  char *irods_cwd; 
   char *indicator; 
+  char *slash_remap;
   int require_conn; /* >0 if an iRODS connection is required at startup */
+  int show_indicator; /* >0 if we should include the query indicator in directory listings */
   int debug_level; 
 } iquest_fuse_conf_t;
 
 
 typedef struct iquest_fuse_irods_conn {
-  rcComm_t *conn;    
+  rcComm_t *conn;    //TODO change to rcComm
   pthread_mutex_t lock;
   time_t actTime;
   int inuseCnt;
@@ -118,6 +120,11 @@ typedef struct iquest_fuse {
   rodsEnv *rodsEnv;
 } iquest_fuse_t;
 
+
+typedef struct iquest_fuse_query_cond {
+  inxValPair_t *where_cond;
+  keyValPair_t *cond;
+} iquest_fuse_query_cond_t;
 
 /*
  * Command line options/args
