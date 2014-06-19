@@ -11,6 +11,7 @@ Usage
 
 ```
 # mount
+mkdir mountpoint
 iquest_fuse mountpoint ...
 
 # unmount
