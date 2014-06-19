@@ -12,7 +12,7 @@ Usage
 ```
 # mount
 mkdir mountpoint
-iquest_fuse mountpoint ...
+iquest_fuse mountpoint
 
 # unmount
 fusermount -u mountpoint 
@@ -20,7 +20,7 @@ fusermount -u mountpoint
 
 To debug, you can mount with the iquestFuse client in the foreground using the `-d` option. 
 ```
-iquest_fuse -d mountpoint ...
+iquest_fuse -d mountpoint
 ```
 
 Make sure you have authenticated to iRODS (e.g. using iinit or kinit) before running `iquest_fuse` 
@@ -28,10 +28,21 @@ or you will get an error.
 
 Also make sure you have a working iRODS user environment file, either in `~/.irodsEnv` or in a file referenced by the `irodsEnvFile` environment variable. 
 
+If you run iquest_fuse as above with no other options, it will mount the collection specified as irodsHome in your environment file. To mount with a different base directory, use the `-c` option. 
+
+For example, to mount the root collection, use:
+```
+iquest_fuse mountpoint -c /
+```
+
+After mounting a collection, you should be able to access the collection as you would with the standard irodsFs client. In addition, in each collection there is a special virtual directory created (by default named `Q`, but you can change this using the `-i` option to `iquest_fuse`) which you can use to perform a metadata search. This directory will *not* appear in directory listings by default (because it would be a disaster if one were to run a directory traversal (such as `find`) on it. 
+
+The virtual `Q` directory contains a list of all available metadata keys (including attributes and user AVUs), which are also indicated as virtual directories. Inside those virtual directories is another set of directories which are the available values. Inside each of those directories you should find all of the data objects and collections that match the query. 
+
 
 Prerequisites
 -------------
-iRODS - tested and working with 3.1, 3.2
+iRODS - tested and working with 3.1
 
 FUSE (http://fuse.sourceforge.net/) - tested with 2.9.3
 
