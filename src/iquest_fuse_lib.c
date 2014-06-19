@@ -2203,6 +2203,7 @@ int iquest_query_and_fill_attr_list(iquest_fuse_t *iqf, char *query_zone, iquest
   genQueryOut_t *genQueryOut = NULL;
   int status;
   struct stat stbuf;
+  int i = 0;
 
   rodsLog(LOG_DEBUG, "iquest_query_and_fill_attr_list");
 
@@ -2247,7 +2248,7 @@ int iquest_query_and_fill_attr_list(iquest_fuse_t *iqf, char *query_zone, iquest
   }
   do {
     sqlResult_t *v[MAX_SQL_ATTR];
-    int i, nf, nr;
+    int nf, nr;
     nf = genQueryOut->attriCnt;
     if(nf != 1) {
       status = -200;
@@ -2278,7 +2279,6 @@ int iquest_query_and_fill_attr_list(iquest_fuse_t *iqf, char *query_zone, iquest
   } while (status==0 && genQueryOut->continueInx > 0);
 
   /* add built-in column names */
-  int i = 0;
   for(i = 0; i < NumOfColumnNames; i++) {
     //filler(buf, columnNames[i].columnName, &stbuf, 0);
   }
