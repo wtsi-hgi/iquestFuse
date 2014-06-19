@@ -53,7 +53,7 @@ extern pathCacheQue_t PathArray[];
 
 
 void *iquest_fuse_init(struct fuse_conn_info *conn) {
-  iquest_fuse_t *iqf = fuse_get_context()->private_data;
+  iquest_fuse_t *iqf = (iquest_fuse_t*)(fuse_get_context()->private_data);
   
   if(iqf->conf->require_conn > 0) {
     /*
@@ -73,13 +73,13 @@ void *iquest_fuse_init(struct fuse_conn_info *conn) {
 }
 
 void iquest_fuse_destroy(void *data) {
-  iquest_fuse_t *iqf = data;
+  iquest_fuse_t *iqf = (iquest_fuse_t*)data;
   rodsLog(LOG_DEBUG, "iquest_fuse_destroy: destroying iquest_fuse");
   iquest_fuse_t_destroy(iqf);
 }
 
 int iquest_fuse_getattr(const char *path, struct stat *stbuf) {
-  iquest_fuse_t *iqf = fuse_get_context()->private_data;
+  iquest_fuse_t *iqf = (iquest_fuse_t*)(fuse_get_context()->private_data);
   char coll_path[MAX_NAME_LEN];
   char zone_hint[MAX_NAME_LEN];
   char *coll = NULL;
@@ -178,7 +178,7 @@ int iquest_fuse_getattr(const char *path, struct stat *stbuf) {
 }
 
 int iquest_fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
-  iquest_fuse_t *iqf = fuse_get_context()->private_data;
+  iquest_fuse_t *iqf = (iquest_fuse_t*)(fuse_get_context()->private_data);
 
   char coll_path[MAX_NAME_LEN];
   char zone_hint[MAX_NAME_LEN];
@@ -409,7 +409,7 @@ int iquest_fuse_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off
 }
 
 int iquest_fuse_open(const char *path, struct fuse_file_info *fi) {
-  iquest_fuse_t *iqf = fuse_get_context()->private_data;
+  iquest_fuse_t *iqf = (iquest_fuse_t*)(fuse_get_context()->private_data);
   dataObjInp_t dataObjInp;
   int status = -1;
   int connstat = -1;
