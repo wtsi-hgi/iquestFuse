@@ -1786,11 +1786,13 @@ int map_irods_auth_errors(int irods_err, int fuse_err) {
     rodsLog(LOG_DEBUG, "map_irods_auth_errors: returning -ENOKEY");
     return(-ENOKEY);
   }
+#ifdef KRB_AUTH
   if(irods_err == SYS_AUTH_EXPIRED) {
     rodsLogError(LOG_DEBUG, irods_err, "map_irods_auth_errors");
     rodsLog(LOG_DEBUG, "map_irods_auth_errors: returning -EKEYEXPIRED");
     return(-EKEYEXPIRED);
   }
+#endif
   return(fuse_err);
 }
 
