@@ -1178,12 +1178,16 @@ int ifuseConnect (iquest_fuse_irods_conn_t *irods_conn) {
 
     status = clientLogin (irods_conn->conn);
     if (status != 0) {
+#ifdef KRB_AUTH
       if(getCanonicalAuthScheme() == AUTHSCHEME_KRB) {
 	/* don't disconnect if using kerberos -- tickets could be renewed later, making a future request succeed */
       } else {
+#endif
 	rcDisconnect (irods_conn->conn);
 	irods_conn->conn=NULL;
+#ifdef KRB_AUTH
       }
+#endif
     }
     return (status);
 }
