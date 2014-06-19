@@ -23,12 +23,18 @@ To debug, you can mount with the iquestFuse client in the foreground using the `
 iquest_fuse -d mountpoint ...
 ```
 
+Make sure you have authenticated to iRODS (e.g. using iinit or kinit) before running `iquest_fuse` 
+or you will get an error. 
+
+Also make sure you have a working iRODS user environment file, either in `~/.irodsEnv` or in a file referenced by the `irodsEnvFile` environment variable. 
+
 
 Prerequisites
 -------------
-iRODS - tested with 3.1
+iRODS - tested and working with 3.1, 3.2
 
 FUSE (http://fuse.sourceforge.net/) - tested with 2.9.3
+
 
 Compiling
 ---------
