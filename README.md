@@ -11,7 +11,7 @@ Usage
 
 ```
 # mount
-iquest_fuse ... mountpoint
+iquest_fuse mountpoint ...
 
 # unmount
 fusermount -u mountpoint 
