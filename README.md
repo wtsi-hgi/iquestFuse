@@ -9,7 +9,7 @@ provided by the iRODS i-command "iquest" (question (query)) utility.
 Usage
 -----
 
-```bash
+```
 # mount
 iquest_fuse ... mountpoint
 
@@ -17,12 +17,33 @@ iquest_fuse ... mountpoint
 fusermount -u mountpoint 
 ```
 
+Prerequisites
+-------------
+iRODS - tested with 3.1
+
+FUSE (http://fuse.sourceforge.net/) - tested with 2.9.3
+
 Compiling
 ---------
 
 This directory should be placed within the source tree of an iRODS 
-source distribution in order to be compiled. The current version was 
-developed against iRODS 3.1.
+source distribution which has been configured and compiled. 
+
+iquestFuse should then be compiled, passing the location of a FUSE 
+installation as the fuseHomeDir variable. 
+
+```
+# configure and compile iRODS
+cd iRODS
+./scripts/configure
+make
+# checkout iquestFuse under clients/
+cd clients
+git clone https://github.com/wtsi-hgi/iquestFuse.git
+# compile iquestFuse
+cd iquestFuse
+make fuseHomeDir=/path/to/fuse-2.9.3
+```
 
 
 Notes
